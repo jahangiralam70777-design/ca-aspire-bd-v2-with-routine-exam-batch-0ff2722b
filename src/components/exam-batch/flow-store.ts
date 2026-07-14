@@ -25,6 +25,17 @@ const EMPTY: ExamBatchFlow = {
 let cachedFlow: ExamBatchFlow = EMPTY;
 let cachedRaw: string | null = null;
 
+function sanitizeFlow(value: unknown): ExamBatchFlow {
+  if (!value || typeof value !== "object") return EMPTY;
+  const record = value as Partial<ExamBatchFlow>;
+  return {
+    sessionId: typeof record.sessionId === "string" ? record.sessionId : null,
+    subjectIds: Array.isArray(record.subjectIds)
+      ? record.subjectIds.filter((id): id is string => typeof id === "string")
+      : [],
+  };
+}
+
 function readFlow(): ExamBatchFlow {
   if (typeof window === "undefined") return EMPTY;
   let raw: string | null = null;
@@ -45,7 +56,7 @@ function readFlow(): ExamBatchFlow {
     return cachedFlow;
   }
   try {
-    cachedFlow = { ...EMPTY, ...(JSON.parse(raw) as Partial<ExamBatchFlow>) };
+    cachedFlow = sanitizeFlow(JSON.parse(raw));
   } catch {
     cachedFlow = EMPTY;
   }
@@ -57,10 +68,15 @@ const listeners = new Set<() => void>();
 
 function writeFlow(next: ExamBatchFlow) {
   if (typeof window === "undefined") return;
-  const raw = JSON.stringify(next);
-  window.localStorage.setItem(KEY, raw);
-  cachedRaw = raw;
-  cachedFlow = next;
+  const safeNext = sanitizeFlow(next);
+  try {
+    const raw = JSON.stringify(safeNext);
+    window.localStorage.setItem(KEY, raw);
+    cachedRaw = raw;
+  } catch {
+    cachedRaw = null;
+  }
+  cachedFlow = safeNext;
   listeners.forEach((l) => l());
 }
 

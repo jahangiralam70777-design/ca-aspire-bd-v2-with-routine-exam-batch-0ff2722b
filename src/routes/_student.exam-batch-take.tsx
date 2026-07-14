@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { z } from "zod";
 import { ExamInterfaceSkeleton } from "@/components/exam-batch/exam-interface-skeleton";
+import { ExamBatchRouteErrorFallback } from "@/components/exam-batch/route-fallback";
 
 const searchSchema = z.object({
   examId: z.string().uuid().optional(),
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/_student/exam-batch-take")({
   // navigation transition, refresh — so the user never sees a blank pane
   // between clicking "Start Exam" and the interface mounting.
   pendingComponent: ExamInterfaceSkeleton,
+  errorComponent: ExamBatchRouteErrorFallback,
   pendingMs: 0,
   pendingMinMs: 0,
   head: () => ({

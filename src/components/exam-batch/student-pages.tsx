@@ -710,9 +710,10 @@ export function StudentLeaderboard() {
 
   const filteredTop = useMemo(() => {
     if (!board) return [];
+    const top = Array.isArray(board.top) ? board.top : [];
     const q = search.trim().toLowerCase();
-    if (!q) return board.top;
-    return board.top.filter((r) => String(r.studentId).toLowerCase().includes(q));
+    if (!q) return top;
+    return top.filter((r) => String(r?.studentId ?? "").toLowerCase().includes(q));
   }, [board, search]);
 
   return (
@@ -1118,10 +1119,10 @@ function ProgressRing({ value, label }: { value: number; label: string }) {
 
 export function StudentProgress() {
   const gate = useRequireExamBatchApproval();
-  const [window, setWindow] = useState<"daily" | "weekly" | "30d">("30d");
+  const [progressWindow, setProgressWindow] = useState<"daily" | "weekly" | "30d">("30d");
   const query = useQuery({
-    queryKey: ["exam-batch", "student", "progress", window],
-    queryFn: () => getExamBatchStudentProgress({ data: { window } }),
+    queryKey: ["exam-batch", "student", "progress", progressWindow],
+    queryFn: () => getExamBatchStudentProgress({ data: { window: progressWindow } }),
   });
   const p = query.data ?? null;
 
@@ -1151,10 +1152,10 @@ export function StudentProgress() {
               <button
                 key={w}
                 type="button"
-                onClick={() => setWindow(w)}
+                onClick={() => setProgressWindow(w)}
                 className={cn(
                   "h-8 rounded-lg px-3 text-xs font-semibold transition",
-                  window === w
+                  progressWindow === w
                     ? "bg-cta-gradient text-white shadow-glow"
                     : "text-muted-foreground hover:text-foreground",
                 )}
