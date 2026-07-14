@@ -161,6 +161,17 @@ export const Route = createFileRoute("/_student/exam-batch")({
     // 3) Authoritative approval decision (status=approved + student_id set).
     //    Only queried when we have a candidate session — otherwise the user
     //    has no enrollment at all and must see the Session picker.
+    //
+    // Source-of-truth rule (fixes white-screen on admin status flips):
+    // the enrollments row is fresher than the access RPC after realtime
+    // invalidation (its query key is table-scoped and refetches on the
+    // same tick). We therefore prefer `currentEnrollment.status` for the
+    // status decision, and require BOTH signals to agree before granting
+    // dashboard access. This guarantees that Approved → Pending / Rejected
+    // / Banned redirects fire on the very first `beforeLoad` re-run after
+    // the DB change, instead of letting the dashboard mount against a
+    // stale-approved RPC result and blowing up on downstream RLS-empty
+    // child queries.
     let canAccessDashboard = false;
     let enrollmentStatus: string | null = currentEnrollment?.status ?? null;
     if (sessionId) {
@@ -169,8 +180,12 @@ export const Route = createFileRoute("/_student/exam-batch")({
         () => getExamBatchAccess({ data: { sessionId } }),
         15_000,
       );
-      canAccessDashboard = access?.canAccessDashboard ?? false;
-      enrollmentStatus = access?.status ?? enrollmentStatus;
+      const rpcApproved = access?.canAccessDashboard ?? false;
+      const rowApproved = currentEnrollment?.status === "approved";
+      canAccessDashboard = rpcApproved && rowApproved;
+      // Prefer the enrollments row's status; fall back to RPC only when
+      // the row itself is missing (e.g. Removed → nothing).
+      enrollmentStatus = currentEnrollment?.status ?? access?.status ?? null;
     }
 
     const inPostArea = POST_APPROVAL_PREFIXES.some((p) => here.startsWith(p));
