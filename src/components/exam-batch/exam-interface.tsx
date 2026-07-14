@@ -516,8 +516,32 @@ export function ExamInterface() {
         />
       </div>
 
+      {/* Mobile floating Palette button — always visible above the sticky
+          bottom bar, on top of the safe area. Guarantees the Question
+          Palette is reachable on every mobile viewport (iPhone SE 320px
+          through tablet) regardless of how the bottom bar wraps. */}
+      <button
+        onClick={() => setPaletteOpen(true)}
+        aria-label={`Open question palette. ${answeredCount} of ${totalQuestions} answered.`}
+        className={cn(
+          "fixed right-4 z-40 inline-flex items-center gap-2 rounded-full bg-cta-gradient px-4 py-3 text-sm font-semibold text-white shadow-glow lg:hidden",
+          // Sit above the mobile bottom bar (h-11 + p-3 ≈ 68px) and the
+          // iOS safe-area inset; never overlap the answer options.
+          "bottom-[calc(env(safe-area-inset-bottom,0px)+80px)]",
+        )}
+      >
+        <Menu className="h-4 w-4" />
+        <span>Palette</span>
+        <span className="rounded-full bg-white/25 px-2 py-0.5 text-[11px] font-bold tabular-nums">
+          {answeredCount}/{totalQuestions}
+        </span>
+      </button>
+
       {/* Mobile sticky bottom bar */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/60 bg-background/85 p-3 backdrop-blur-xl lg:hidden">
+      <div
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border/60 bg-background/85 p-3 backdrop-blur-xl lg:hidden"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+      >
         <div className="mx-auto flex max-w-3xl items-center gap-2">
           <button
             onClick={() => loadIndex(current - 1)}
@@ -530,11 +554,12 @@ export function ExamInterface() {
           </button>
           <button
             onClick={() => setPaletteOpen(true)}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl bg-cta-gradient text-white shadow-glow"
-            aria-label="Question palette"
+            className="relative inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-primary/40 bg-background/60 px-3 text-sm font-semibold text-primary"
+            aria-label="Open question palette"
           >
             <Menu className="h-4 w-4" />
-            <span className="absolute -right-1 -top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+            <span className="hidden xs:inline sm:inline">Palette</span>
+            <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white tabular-nums">
               {answeredCount}
             </span>
           </button>

@@ -90,7 +90,17 @@ export function useExamBatchAccess() {
     placeholderData: keepPreviousData,
   });
 
-  const canAccessDashboard = accessQuery.data?.canAccessDashboard ?? false;
+  // Source-of-truth rule (fixes white-screen on admin status flips):
+  // treat the enrollments row as authoritative for approval state and
+  // require it to agree with the access RPC. Prevents the layout from
+  // continuing to show post-approval routes when Realtime has already
+  // updated `my-enrollments` but the `access` RPC refetch is still in
+  // flight (which caused downstream RLS-empty child queries to blow up
+  // → route error boundary → visible flash on Approved → Pending /
+  // Rejected / Banned / Removed transitions).
+  const rpcApproved = accessQuery.data?.canAccessDashboard ?? false;
+  const rowApproved = currentEnrollment?.status === "approved";
+  const canAccessDashboard = rpcApproved && rowApproved;
   const studentId = accessQuery.data?.studentId ?? null;
   // Prefer the enrollment row's status (source of truth from the
   // enrollments table) so admin-driven transitions
