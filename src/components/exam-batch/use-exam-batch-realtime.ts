@@ -278,6 +278,7 @@ export function useExamBatchRealtime() {
   const router = useRouter();
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
     mountCount += 1;
     let cancelled = false;
     let authSub: { unsubscribe: () => void } | null = null;
@@ -355,7 +356,7 @@ export function useExamBatchRealtime() {
         visibilityResyncTimer = null;
         const hiddenAt = hiddenSinceMs;
         hiddenSinceMs = null;
-        if (document.visibilityState !== "visible") return;
+        if (typeof document === "undefined" || document.visibilityState !== "visible") return;
         const hiddenFor = hiddenAt == null ? 0 : Date.now() - hiddenAt;
         // A brief tab-switch cannot have missed a Postgres change
         // relevant to access decisions; skip the re-sync entirely.
@@ -374,6 +375,7 @@ export function useExamBatchRealtime() {
       resyncAccess(qc, router);
     };
     const handleVisibility = () => {
+      if (typeof document === "undefined") return;
       if (document.visibilityState === "hidden") {
         if (hiddenSinceMs == null) hiddenSinceMs = Date.now();
         return;
@@ -383,7 +385,7 @@ export function useExamBatchRealtime() {
     };
     // Seed hidden-since if the tab starts hidden (Chrome background tab
     // restore, "open link in new background tab", etc.).
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+    if (document.visibilityState === "hidden") {
       hiddenSinceMs = Date.now();
     }
     window.addEventListener("online", handleOnline);
