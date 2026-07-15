@@ -3894,3 +3894,107 @@ BEGIN
   RAISE NOTICE
     'Exam Batch questions view security hardening verified: security_invoker=on, view revoked from anon/authenticated, exam_batch_mcqs anon-locked, RLS enabled.';
 END $$;
+
+-- =====================================================================
+-- Enrollment subject picker fix — restore public read (2026-07-15)
+-- =====================================================================
+-- Root cause of the recurring "No subjects configured yet" empty state
+-- on the student Exam Batch enrollment subject picker:
+--
+--   The 2026-07-23 security-tightening block above re-added an
+--   `has_exam_batch_enrollment(session_id)` predicate to the
+--   `exam_batch_session_subjects` SELECT policy. That predicate requires
+--   the caller to already have an APPROVED, non-removed enrollment for
+--   the session. A student who has not enrolled yet therefore gets zero
+--   rows back from `listExamBatchSessionSubjects` — even though the admin
+--   correctly inserted (session_id, subject_id, sort_order) rows via
+--   `adminSetExamBatchSessionSubjects`. The picker then renders the
+--   "admin hasn't assigned any subjects" empty state, which is a false
+--   negative: the rows exist, RLS is filtering them out.
+--
+--   This is the exact chicken-and-egg the 2026-07-14 fix identified and
+--   solved: enrollment cannot happen without seeing subjects first, so
+--   subject visibility MUST NOT depend on enrollment.
+--
+-- Fix
+--   Reinstate the simple `TO authenticated USING (true)` SELECT policy
+--   on `exam_batch_session_subjects`. The mapping table only stores
+--   (session_id, subject_id, sort_order) — both parents
+--   (`exam_batch_sessions`, `exam_batch_subjects`) are already readable
+--   to every authenticated user, so this mapping carries no additional
+--   secret. Admin write policy (`_admin_all`) is untouched.
+--
+--   Leaderboard and countdown policies from the 2026-07-23 block remain
+--   enrollment-scoped — those DO leak signal (rankings, exam schedule)
+--   and are correctly kept tight.
+--
+-- Idempotent — safe to re-run on any environment.
+-- =====================================================================
+DO $ebss_picker_fix_20260715$
+BEGIN
+  -- Ensure the table exists before touching policies (defensive on very
+  -- old installs where this file is run out of order).
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relname = 'exam_batch_session_subjects'
+  ) THEN
+    DROP POLICY IF EXISTS exam_batch_session_subjects_read
+      ON public.exam_batch_session_subjects;
+
+    CREATE POLICY exam_batch_session_subjects_read
+      ON public.exam_batch_session_subjects
+      FOR SELECT TO authenticated
+      USING (true);
+  END IF;
+END
+$ebss_picker_fix_20260715$;
+
+-- Realtime publication — make sure INSERT/UPDATE/DELETE on the mapping
+-- table fan out to student clients so the picker updates without a
+-- manual refresh after the admin assigns/edits subjects. Idempotent.
+DO $ebss_realtime_20260715$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'
+  ) AND NOT EXISTS (
+    SELECT 1
+      FROM pg_publication_tables
+     WHERE pubname   = 'supabase_realtime'
+       AND schemaname = 'public'
+       AND tablename  = 'exam_batch_session_subjects'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.exam_batch_session_subjects';
+  END IF;
+END
+$ebss_realtime_20260715$;
+
+-- Verification — fail loudly if the fix did not take effect.
+DO $ebss_verify_20260715$
+DECLARE
+  v_using text;
+BEGIN
+  SELECT pg_get_expr(pol.polqual, pol.polrelid)
+    INTO v_using
+    FROM pg_policy pol
+    JOIN pg_class  c ON c.oid = pol.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public'
+     AND c.relname = 'exam_batch_session_subjects'
+     AND pol.polname = 'exam_batch_session_subjects_read';
+
+  IF v_using IS NULL THEN
+    RAISE EXCEPTION
+      'SECURITY CHECK FAILED: exam_batch_session_subjects_read policy missing';
+  END IF;
+
+  IF v_using ILIKE '%has_exam_batch_enrollment%' THEN
+    RAISE EXCEPTION
+      'SECURITY CHECK FAILED: exam_batch_session_subjects_read still gated by enrollment (%). Students cannot see subjects before enrolling.', v_using;
+  END IF;
+
+  RAISE NOTICE
+    'Exam Batch session-subjects picker RLS verified: authenticated users can read the mapping table (USING=%).', v_using;
+END
+$ebss_verify_20260715$;
