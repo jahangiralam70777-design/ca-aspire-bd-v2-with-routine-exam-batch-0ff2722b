@@ -187,18 +187,60 @@ let visibilityResyncTimer: ReturnType<typeof setTimeout> | null = null;
 const MIN_HIDDEN_MS_FOR_RESYNC = 15_000;
 const VISIBILITY_DEBOUNCE_MS = 250;
 
+// Router-invalidate coalescing (mobile white-screen fix).
+//
+// Root cause of the mobile white-screen: when an admin flipped a
+// student's enrollment status, multiple postgres_changes events fired
+// within the same tick (enrollments + enrollment_subjects +
+// occasionally attendance_state). Each event scheduled a fresh
+// `router.invalidate()` inside `flush()`, so the layout's `beforeLoad`
+// began re-running two or three times back-to-back with the queries it
+// awaits being invalidated mid-flight. On mobile (slow network + timer
+// throttling) at least one of those overlapping runs consistently lost
+// the race — its awaited `fetchQuery` resolved AFTER a competing run
+// had already thrown `redirect()`, the second `throw redirect` bubbled
+// out of an unhandled promise chain, and TanStack Router tore the
+// whole subtree down while the transition was still pending → blank
+// white screen until manual refresh.
+//
+// Fix: never allow more than one in-flight `router.invalidate()` from
+// this bridge. If another realtime burst arrives while one is running,
+// mark it as "re-run needed" and fire exactly one more when the first
+// resolves. Deterministic on every device.
+let routerInvalidateInFlight: Promise<unknown> | null = null;
+let routerInvalidatePending = false;
+
 function safeInvalidateRouter(router: AnyRouter) {
-  // A transient network failure inside `beforeLoad` (very common on tab
-  // return) surfaces as an unhandled rejection and blanks the layout via
-  // its error boundary. Swallow the failure — the next realtime event,
-  // online event, or user navigation will retry.
+  if (routerInvalidateInFlight) {
+    routerInvalidatePending = true;
+    return;
+  }
   try {
     const p = router.invalidate();
-    if (p && typeof (p as { catch?: unknown }).catch === "function") {
-      (p as Promise<unknown>).catch(() => {});
-    }
+    const promise =
+      p && typeof (p as { then?: unknown }).then === "function"
+        ? (p as Promise<unknown>)
+        : Promise.resolve();
+    routerInvalidateInFlight = promise;
+    promise
+      .catch(() => {
+        // TanStack's `redirect()` signal, transient network errors on
+        // tab wake, and aborted transitions all reject here. Swallow —
+        // the layout's error boundary + `safeFetch` inside beforeLoad
+        // already handle user-visible recovery.
+      })
+      .finally(() => {
+        routerInvalidateInFlight = null;
+        if (routerInvalidatePending) {
+          routerInvalidatePending = false;
+          // Defer the follow-up to a macrotask so React commits the
+          // previous run's redirect first. Prevents the "two
+          // beforeLoads racing" pattern that caused the blank screen.
+          setTimeout(() => safeInvalidateRouter(router), 0);
+        }
+      });
   } catch {
-    /* noop */
+    routerInvalidateInFlight = null;
   }
 }
 
