@@ -54,11 +54,17 @@ function normalizeWhatsapp(raw: string | null | undefined): string | null {
 }
 
 export function StudentExamBatchBanPage({ decision }: { decision: ExamBatchAccessDecision }) {
-  const primary = decision.ban;
-  const others = decision.bans.slice(1);
-  const waHref = normalizeWhatsapp(decision.whatsappContact ?? primary?.whatsappContact ?? null);
+  // Defensive access: on mobile, a realtime status flip can invalidate
+  // `getExamBatchAccessState`'s cache and repopulate it mid-render. If
+  // the returned shape ever lacks `bans` (partial payload, migration
+  // skew), `.slice(1)` would throw a TypeError and blank the Exam
+  // Batch subtree. Coalesce to safe defaults so the render is total.
+  const bansList = Array.isArray(decision?.bans) ? decision.bans : [];
+  const primary = decision?.ban ?? bansList[0] ?? null;
+  const others = bansList.slice(1);
+  const waHref = normalizeWhatsapp(decision?.whatsappContact ?? primary?.whatsappContact ?? null);
   const waLabel =
-    decision.whatsappButtonText?.trim() ||
+    decision?.whatsappButtonText?.trim() ||
     primary?.whatsappButtonText?.trim() ||
     "Contact on WhatsApp";
 

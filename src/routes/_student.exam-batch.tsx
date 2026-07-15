@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { ExamBatchLayout } from "@/components/exam-batch/layout";
 import { useExamBatchStudentNav } from "@/components/exam-batch/access-gate";
 import { StudentExamBatchBanPage } from "@/components/exam-batch/student-ban-page";
@@ -96,6 +97,13 @@ export const Route = createFileRoute("/_student/exam-batch")({
   // genuine failures.
   pendingMs: 30_000,
   pendingMinMs: 0,
+  // Explicit pendingComponent so that if a mobile transition ever
+  // outlives `pendingMs` (slow network on tab wake, delayed Supabase
+  // response mid-realtime-burst) the user sees a bounded spinner
+  // instead of a blank white frame. Historically the router fell
+  // through to nothing during long enrollment-status-flip transitions
+  // on mobile → the "white screen until manual refresh" symptom.
+  pendingComponent: ExamBatchLayoutPending,
   // Runs BEFORE any child route mounts. Because `_student` is `ssr:false`,
   // this runs client-side with access to the authenticated Supabase
   // session. We throw `redirect()` here — TanStack Router applies the
@@ -229,6 +237,27 @@ export const Route = createFileRoute("/_student/exam-batch")({
     ],
   }),
 });
+
+function ExamBatchLayoutPending() {
+  // Rendered by TanStack Router if a `beforeLoad` transition outlives
+  // `pendingMs`. Keep the Exam Batch shell visible with a bounded
+  // spinner — never a blank frame. No sub-nav yet (we don't know the
+  // student's approval state at this point), which is fine: the same
+  // component covers cold navigations and realtime-triggered reruns.
+  return (
+    <div className="mx-auto w-full max-w-7xl px-3 pb-10 pt-3 sm:px-5 sm:pt-4 lg:px-6">
+      <div
+        className="flex min-h-[40vh] items-center justify-center rounded-3xl border border-border/60 bg-background/40"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <span className="sr-only">Loading Exam Batch…</span>
+      </div>
+    </div>
+  );
+}
+
 
 function ExamBatchLayoutError({ error, reset }: { error: Error; reset: () => void }) {
   // Any error escaping `beforeLoad` or the layout tree lands here.
