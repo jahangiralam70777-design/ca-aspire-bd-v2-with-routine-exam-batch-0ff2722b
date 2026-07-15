@@ -36,6 +36,8 @@ import {
 } from "@/lib/exam-batch";
 import type { AttemptQuestionView, ResultVisibility } from "@/lib/exam-batch";
 import { notifyExamBatchRealtime, useExamBatchRealtime } from "./use-exam-batch-realtime";
+import { consumeExamStart, consumeExamState } from "./exam-prewarm";
+
 
 type Phase = "loading" | "exam" | "processing" | "submitted" | "error";
 type QState = "answered" | "unanswered" | "current";
