@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect, useRouter } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { ExamBatchLayout } from "@/components/exam-batch/layout";
 import { useExamBatchStudentNav } from "@/components/exam-batch/access-gate";
 import { StudentExamBatchBanPage } from "@/components/exam-batch/student-ban-page";
