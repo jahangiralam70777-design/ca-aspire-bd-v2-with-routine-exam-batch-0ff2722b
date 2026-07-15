@@ -76,6 +76,8 @@ function prewarmExamInterfaceChunk() {
   }
   return examInterfaceChunkPromise;
 }
+import { prewarmExamState, prewarmExamStart } from "./exam-prewarm";
+
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -3602,9 +3604,14 @@ function ExamRowCard({
             onFocus={prewarmExamInterfaceChunk}
             onTouchStart={prewarmExamInterfaceChunk}
             onClick={() => {
-              // Kick off chunk download before navigating so the route's
-              // Suspense fallback resolves nearly immediately.
+              // Kick off chunk download + first server call BEFORE navigating
+              // so the exam UI can render as soon as the route mounts.
               void prewarmExamInterfaceChunk();
+              if (exam.attemptId) {
+                void prewarmExamState(exam.attemptId).catch(() => {});
+              } else {
+                void prewarmExamStart(exam.id).catch(() => {});
+              }
               onStart(exam.id, exam.attemptId ?? null);
             }}
           >
@@ -3613,6 +3620,7 @@ function ExamRowCard({
           </button>
         </div>
       ) : null}
+
     </motion.article>
   );
 }
@@ -3869,6 +3877,11 @@ export function StudentAvailable() {
                   onTouchStart={prewarmExamInterfaceChunk}
                   onClick={() => {
                     void prewarmExamInterfaceChunk();
+                    if (e.attemptId) {
+                      void prewarmExamState(e.attemptId).catch(() => {});
+                    } else {
+                      void prewarmExamStart(e.id).catch(() => {});
+                    }
                     navigate({
                       to: "/exam-batch-take" as never,
                       // If we already have an in-progress attempt for this
@@ -3880,6 +3893,7 @@ export function StudentAvailable() {
                         : { examId: e.id }) as never,
                     });
                   }}
+
                 >
                   <PlayCircle className="h-4 w-4" />
                   {e.availability === "live" ? "Continue" : "Start Exam"}
