@@ -3604,9 +3604,14 @@ function ExamRowCard({
             onFocus={prewarmExamInterfaceChunk}
             onTouchStart={prewarmExamInterfaceChunk}
             onClick={() => {
-              // Kick off chunk download before navigating so the route's
-              // Suspense fallback resolves nearly immediately.
+              // Kick off chunk download + first server call BEFORE navigating
+              // so the exam UI can render as soon as the route mounts.
               void prewarmExamInterfaceChunk();
+              if (exam.attemptId) {
+                void prewarmExamState(exam.attemptId).catch(() => {});
+              } else {
+                void prewarmExamStart(exam.id).catch(() => {});
+              }
               onStart(exam.id, exam.attemptId ?? null);
             }}
           >
@@ -3615,6 +3620,7 @@ function ExamRowCard({
           </button>
         </div>
       ) : null}
+
     </motion.article>
   );
 }
