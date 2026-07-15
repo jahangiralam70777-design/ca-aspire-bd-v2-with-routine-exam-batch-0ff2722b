@@ -3877,6 +3877,11 @@ export function StudentAvailable() {
                   onTouchStart={prewarmExamInterfaceChunk}
                   onClick={() => {
                     void prewarmExamInterfaceChunk();
+                    if (e.attemptId) {
+                      void prewarmExamState(e.attemptId).catch(() => {});
+                    } else {
+                      void prewarmExamStart(e.id).catch(() => {});
+                    }
                     navigate({
                       to: "/exam-batch-take" as never,
                       // If we already have an in-progress attempt for this
@@ -3888,6 +3893,7 @@ export function StudentAvailable() {
                         : { examId: e.id }) as never,
                     });
                   }}
+
                 >
                   <PlayCircle className="h-4 w-4" />
                   {e.availability === "live" ? "Continue" : "Start Exam"}
