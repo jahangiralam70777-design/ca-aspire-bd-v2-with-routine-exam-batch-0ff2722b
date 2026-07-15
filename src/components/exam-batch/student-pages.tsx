@@ -76,6 +76,8 @@ function prewarmExamInterfaceChunk() {
   }
   return examInterfaceChunkPromise;
 }
+import { prewarmExamState, prewarmExamStart } from "./exam-prewarm";
+
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
