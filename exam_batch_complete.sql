@@ -3755,3 +3755,142 @@ begin
   end if;
 end
 $$;
+-- =====================================================================
+-- SECURITY HARDENING (2026-07-15) — Exam Batch questions view
+-- ---------------------------------------------------------------------
+-- Root cause of the Supabase advisor "UNRESTRICTED" flag on
+-- public.exam_batch_questions_v:
+--
+--   1. The view was created without WITH (security_invoker = on), so it
+--      runs with its OWNER's privileges — bypassing the caller's RLS on
+--      public.exam_batch_mcqs. Any authenticated PostgREST caller could
+--      therefore query the view and read the answer key (`correct_option`)
+--      for every published MCQ, regardless of whether they were enrolled
+--      in the corresponding exam batch.
+--   2. Direct GRANT SELECT ... TO authenticated on the view compounded
+--      the leak by exposing the view over the Data API.
+--
+-- The view is ONLY consumed by SECURITY DEFINER RPCs
+-- (exam_batch_start_or_resume_attempt, submit/scoring paths). Those RPCs
+-- run as the function owner and keep working even after the view's
+-- direct grants are revoked, so students and admins are unaffected.
+--
+-- This block is fully idempotent — safe to re-run.
+-- =====================================================================
+BEGIN;
+
+-- 1. Recreate the compatibility view as SECURITY INVOKER so any future
+--    direct query respects the caller's RLS on exam_batch_mcqs.
+CREATE OR REPLACE VIEW public.exam_batch_questions_v
+  WITH (security_invoker = on) AS
+SELECT
+  m.id,
+  jsonb_build_array(m.option_a, m.option_b, m.option_c, m.option_d) AS options,
+  CASE lower(m.correct_option)
+    WHEN 'a' THEN '0'
+    WHEN 'b' THEN '1'
+    WHEN 'c' THEN '2'
+    WHEN 'd' THEN '3'
+    ELSE NULL
+  END AS correct_option
+FROM public.exam_batch_mcqs m;
+
+COMMENT ON VIEW public.exam_batch_questions_v IS
+  'Internal scoring view. security_invoker=on. Not exposed over the Data '
+  'API — read only from SECURITY DEFINER exam_batch_* RPCs which run as '
+  'the view owner.';
+
+-- 2. Lock the view down over the Data API. SECURITY DEFINER RPCs still
+--    read it via ownership, so student/admin flows are untouched.
+REVOKE ALL      ON public.exam_batch_questions_v FROM PUBLIC;
+REVOKE ALL      ON public.exam_batch_questions_v FROM anon;
+REVOKE ALL      ON public.exam_batch_questions_v FROM authenticated;
+GRANT  SELECT   ON public.exam_batch_questions_v TO service_role;
+
+-- 3. Defence-in-depth on the underlying table:
+--    a) drop the historical `anon` SELECT grant on exam_batch_mcqs. The
+--       app has always required an authenticated session; no public
+--       endpoint reads MCQs. RLS already forbids anon SELECTs, but the
+--       lingering grant showed up as a false-positive in security scans.
+REVOKE SELECT ON public.exam_batch_mcqs FROM anon;
+
+--    b) remove the `anon` grant that was accidentally added on the
+--       compatibility view line above in earlier migrations. Guarded so
+--       re-runs on already-clean databases are harmless.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.role_table_grants
+     WHERE table_schema = 'public'
+       AND table_name   = 'exam_batch_questions_v'
+       AND grantee IN ('anon','authenticated','PUBLIC')
+  ) THEN
+    REVOKE ALL ON public.exam_batch_questions_v FROM anon, authenticated;
+  END IF;
+END $$;
+
+COMMIT;
+
+-- ---------------------------------------------------------------------
+-- Verification block — fails loudly if the hardening did not apply.
+-- ---------------------------------------------------------------------
+DO $$
+DECLARE
+  v_invoker_on boolean;
+  v_bad_grants int;
+BEGIN
+  -- 1. security_invoker must be ON
+  SELECT COALESCE(
+           (SELECT true
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public'
+               AND c.relname = 'exam_batch_questions_v'
+               AND c.reloptions::text ILIKE '%security_invoker=on%'),
+           false)
+    INTO v_invoker_on;
+  IF NOT v_invoker_on THEN
+    RAISE EXCEPTION
+      'SECURITY CHECK FAILED: exam_batch_questions_v is not security_invoker=on';
+  END IF;
+
+  -- 2. View must NOT be granted to anon or authenticated
+  SELECT count(*) INTO v_bad_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public'
+     AND table_name   = 'exam_batch_questions_v'
+     AND grantee IN ('anon','authenticated','PUBLIC');
+  IF v_bad_grants > 0 THEN
+    RAISE EXCEPTION
+      'SECURITY CHECK FAILED: exam_batch_questions_v still exposed to anon/authenticated (% grants)',
+      v_bad_grants;
+  END IF;
+
+  -- 3. Underlying MCQ table must not be readable by anon
+  SELECT count(*) INTO v_bad_grants
+    FROM information_schema.role_table_grants
+   WHERE table_schema = 'public'
+     AND table_name   = 'exam_batch_mcqs'
+     AND grantee      = 'anon'
+     AND privilege_type = 'SELECT';
+  IF v_bad_grants > 0 THEN
+    RAISE EXCEPTION
+      'SECURITY CHECK FAILED: exam_batch_mcqs still SELECT-able by anon';
+  END IF;
+
+  -- 4. RLS must be enabled on exam_batch_mcqs
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relname = 'exam_batch_mcqs'
+       AND c.relrowsecurity
+  ) THEN
+    RAISE EXCEPTION
+      'SECURITY CHECK FAILED: RLS is not enabled on exam_batch_mcqs';
+  END IF;
+
+  RAISE NOTICE
+    'Exam Batch questions view security hardening verified: security_invoker=on, view revoked from anon/authenticated, exam_batch_mcqs anon-locked, RLS enabled.';
+END $$;
