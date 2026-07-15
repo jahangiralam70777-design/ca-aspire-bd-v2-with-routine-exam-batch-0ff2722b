@@ -97,6 +97,13 @@ export const Route = createFileRoute("/_student/exam-batch")({
   // genuine failures.
   pendingMs: 30_000,
   pendingMinMs: 0,
+  // Explicit pendingComponent so that if a mobile transition ever
+  // outlives `pendingMs` (slow network on tab wake, delayed Supabase
+  // response mid-realtime-burst) the user sees a bounded spinner
+  // instead of a blank white frame. Historically the router fell
+  // through to nothing during long enrollment-status-flip transitions
+  // on mobile → the "white screen until manual refresh" symptom.
+  pendingComponent: ExamBatchLayoutPending,
   // Runs BEFORE any child route mounts. Because `_student` is `ssr:false`,
   // this runs client-side with access to the authenticated Supabase
   // session. We throw `redirect()` here — TanStack Router applies the
