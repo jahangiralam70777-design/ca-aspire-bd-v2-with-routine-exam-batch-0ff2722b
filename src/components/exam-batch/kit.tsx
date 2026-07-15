@@ -129,9 +129,12 @@ export function StatCard({
           toneMap[tone],
         )}
       />
-      <div className="relative flex flex-1 items-start justify-between gap-3">
+      <div className="relative flex flex-1 items-start justify-between gap-2 sm:gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+          <p
+            className="text-[10px] font-semibold uppercase leading-snug tracking-[0.08em] text-muted-foreground [overflow-wrap:anywhere] sm:text-[11px] sm:tracking-[0.15em]"
+            title={label}
+          >
             {label}
           </p>
           <div className="mt-2 font-display text-2xl font-bold leading-tight tracking-tight [word-break:break-word] sm:text-[1.75rem]">
@@ -141,11 +144,11 @@ export function StatCard({
         </div>
         <div
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-glow ring-1 ring-white/20 transition-transform duration-300 group-hover:scale-110",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-glow ring-1 ring-white/20 transition-transform duration-300 group-hover:scale-110 sm:h-10 sm:w-10 sm:rounded-xl",
             toneMap[tone],
           )}
         >
-          <Icon className="h-5 w-5" />
+          <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
       </div>
     </div>
