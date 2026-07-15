@@ -238,6 +238,27 @@ export const Route = createFileRoute("/_student/exam-batch")({
   }),
 });
 
+function ExamBatchLayoutPending() {
+  // Rendered by TanStack Router if a `beforeLoad` transition outlives
+  // `pendingMs`. Keep the Exam Batch shell visible with a bounded
+  // spinner — never a blank frame. No sub-nav yet (we don't know the
+  // student's approval state at this point), which is fine: the same
+  // component covers cold navigations and realtime-triggered reruns.
+  return (
+    <div className="mx-auto w-full max-w-7xl px-3 pb-10 pt-3 sm:px-5 sm:pt-4 lg:px-6">
+      <div
+        className="flex min-h-[40vh] items-center justify-center rounded-3xl border border-border/60 bg-background/40"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <span className="sr-only">Loading Exam Batch…</span>
+      </div>
+    </div>
+  );
+}
+
+
 function ExamBatchLayoutError({ error, reset }: { error: Error; reset: () => void }) {
   // Any error escaping `beforeLoad` or the layout tree lands here.
   // Historically a transient tab-return failure would render the root
