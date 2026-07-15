@@ -119,7 +119,11 @@ export function ExamInterface() {
         let examId = search.examId ?? null;
 
         if (!aid && examId) {
-          const res = await startFn({ data: { examId } });
+          // Reuse an in-flight start RPC from the Continue/Start click if
+          // one was prewarmed — this collapses the click→first-question
+          // path on mobile by ~1 full round-trip.
+          const prewarmed = consumeExamStart(examId);
+          const res = await (prewarmed ?? startFn({ data: { examId } }));
           if (cancelled) return;
           aid = res.attemptId;
           // Replace url with attemptId so refresh resumes cleanly
@@ -138,14 +142,16 @@ export function ExamInterface() {
         // call in a hard timeout so a stalled backend never leaves the
         // student staring at a skeleton indefinitely — they see a real
         // error with a way out instead of a blank pane.
+        const prewarmedState = consumeExamState(aid);
         const stPromise = withTimeout(
-          stateFn({ data: { attemptId: aid, index: 0 } }),
+          prewarmedState ?? stateFn({ data: { attemptId: aid, index: 0 } }),
           15_000,
           "The exam is taking longer than expected to load. Please try again.",
         );
         const metaPromise = examId
           ? metaFn({ data: { examId } }).catch(() => null)
           : Promise.resolve(null);
+
 
         const st = await stPromise;
         if (cancelled) return;
